@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory Management System - Frontend</title>
+  <style>
+    :root {
+      --accent: #1f6feb;
+      --muted: #666;
+      --bg: #f7f9fc;
+      --card: #ffffff;
+      --danger: #e05353;
+    }
+    body { font-family: Inter, system-ui, Arial, sans-serif; margin:0; background:var(--bg); color:#111; }
+    .container { max-width:1100px; margin:28px auto; padding:20px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+    h1 { font-size:20px; margin:0; }
+    .card { background:var(--card); border-radius:10px; padding:16px; box-shadow:0 6px 18px rgba(20,30,40,0.06); }
+    .grid { display:grid; grid-template-columns: 1fr 360px; gap:16px; align-items:start; }
+    form .row { display:flex; gap:8px; margin-bottom:8px; }
+    label { font-size:13px; color:var(--muted); margin-bottom:6px; display:block; }
+    input[type="text"], input[type="number"], select { width:100%; padding:8px 10px; border-radius:6px; border:1px solid #dde6f2; background:#fff; }
+    button { padding:8px 12px; border-radius:8px; border:0; cursor:pointer; font-weight:600; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-ghost { background:transparent; border:1px solid #e6eefc; color:var(--accent); }
+    .btn-danger { background:var(--danger); color:#fff; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; }
+    .muted { color:var(--muted); font-size:13px; }
+    .controls { display:flex; gap:8px; align-items:center; }
+    .small { font-size:12px; padding:6px 8px; border-radius:6px; }
+    .search { display:flex; gap:8px; }
+    .center { text-align:center; padding:20px; color:var(--muted); }
+    .table-actions button { margin-right:6px; }
+    @media (max-width:880px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Inventory Management System</h1>
+        <div class="muted">Manage items — add, update, delete & run quick searches</div>
+      </div>
+      <div class="controls">
+        <div class="search card" style="display:flex;align-items:center;padding:8px 10px;">
+          <input id="searchInput" type="text" placeholder="Search by name or category" style="border:none;outline:none;background:transparent;" />
+          <button id="searchBtn" class="small btn-ghost">Search</button>
+          <button id="clearSearchBtn" class="small" style="background:#f1f5f9;border-radius:6px;">Clear</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Left column: items list -->
+      <div class="card" id="itemsCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>Items</strong>
+          <div class="muted small">Total: <span id="totalCount">0</span></div>
+        </div>
+
+        <div id="itemsTableWrap">
+          <table id="itemsTable" aria-live="polite">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="itemsBody">
+              <tr><td colspan="6" class="center">Loading items…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Right column: add / update form -->
+      <div class="card">
+        <strong id="formTitle">Add New Item</strong>
+        <form id="itemForm" onsubmit="return false;">
+          <input type="hidden" id="itemId" value="">
+          <div class="row">
+            <div style="flex:1;">
+              <label for="name">Item Name</label>
+              <input id="name" type="text" placeholder="e.g. Wireless Mouse" required />
+            </div>
+          </div>
+
+          <div class="row">
+            <div style="flex:1;">
+              <label for="category">Category</label>
+              <input id="category" type="text" placeholder="e.g. Electronics" />
+            </div>
+            <div style="width:120px;">
+              <label for="quantity">Quantity</label>
+              <input id="quantity" type="number" min="0" step="1" value="0" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div style="flex:1;">
+              <label for="price">Price (per unit)</label>
+              <input id="price" type="number" min="0" step="0.01" value="0.00" />
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button id="saveBtn" class="btn-primary">Save Item</button>
+            <button id="updateBtn" class="btn-primary" style="display:none;background:#0b8a5f;">Update Item</button>
+            <button id="resetBtn" class="btn-ghost" type="button">Reset</button>
+          </div>
+
+          <div id="formMsg" class="muted" style="margin-top:10px;"></div>
+        </form>
+
+        <hr style="margin:16px 0" />
+
+        <div>
+          <strong>Quick actions</strong>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <button id="refreshBtn" class="small">Refresh Items</button>
+            <button id="downloadCsv" class="small">Download CSV</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Base API URL - change if your backend runs on another host/port
+    const API_BASE = '/api'; // e.g. 'http://localhost:8080/api' if backend is separate
+
+    // DOM elements
+    const itemsBody = document.getElementById('itemsBody');
+    const totalCount = document.getElementById('totalCount');
+    const itemForm = document.getElementById('itemForm');
+    const itemIdInput = document.getElementById('itemId');
+    const nameInput = document.getElementById('name');
+    const categoryInput = document.getElementById('category');
+    const qtyInput = document.getElementById('quantity');
+    const priceInput = document.getElementById('price');
+    const formTitle = document.getElementById('formTitle');
+    const saveBtn = document.getElementById('saveBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const formMsg = document.getElementById('formMsg');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const downloadCsv = document.getElementById('downloadCsv');
+
+    // Helpers
+    function showMessage(text, time = 3000) {
+      formMsg.textContent = text;
+      setTimeout(() => { if (formMsg.textContent === text) formMsg.textContent = ''; }, time);
+    }
+
+    function validateForm(name, qty, price) {
+      if (!name || name.trim().length < 2) { showMessage('Enter a valid item name.'); return false; }
+      if (isNaN(qty) || qty < 0) { showMessage('Quantity must be a non-negative number.'); return false; }
+      if (isNaN(price) || price < 0) { showMessage('Price must be a non-negative number.'); return false; }
+      return true;
+    }
+
+    // Fetch items list
+    async function fetchItems(query = '') {
+      try {
+        const q = query ? '?q=' + encodeURIComponent(query) : '';
+        const res = await fetch(`${API_BASE}/items${q}`);
+        if (!res.ok) throw new Error('Failed to fetch items');
+        const items = await res.json();
+        renderItems(items);
+      } catch (err) {
+        itemsBody.innerHTML = `<tr><td colspan="6" class="center">Error fetching items: ${err.message}</td></tr>`;
+        totalCount.textContent = '0';
+      }
+    }
+
+    function renderItems(items) {
+      if (!Array.isArray(items) || items.length === 0) {
+        itemsBody.innerHTML = `<tr><td colspan="6" class="center">No items found.</td></tr>`;
+        totalCount.textContent = '0';
+        return;
+      }
+      totalCount.textContent = items.length;
+      itemsBody.innerHTML = items.map((it, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(it.name)}</td>
+          <td>${escapeHtml(it.category || '')}</td>
+          <td>${it.quantity}</td>
+          <td>${formatMoney(it.price)}</td>
+          <td class="table-actions">
+            <button class="small btn-ghost" onclick="editItem(${it.item_id})">Edit</button>
+            <button class="small" style="background:#ffd9d9;border-radius:6px;" onclick="deleteItem(${it.item_id})">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Create / add item
+    async function addItem() {
+      const name = nameInput.value.trim();
+      const category = categoryInput.value.trim();
+      const qty = Number(qtyInput.value);
+      const price = Number(priceInput.value);
+      if (!validateForm(name, qty, price)) return;
+
+      try {
+        const res = await fetch(`${API_BASE}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, category, quantity: qty, price })
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(err || 'Failed to add item');
+        }
+        showMessage('Item added successfully');
+        resetForm();
+        fetchItems();
+      } catch (err) {
+        showMessage('Add failed: ' + err.message);
+      }
+    }
+
+    // Edit flow (prefill form)
+    async function editItem(id) {
+      try {
+        const res = await fetch(`${API_BASE}/items/${id}`);
+        if (!res.ok) throw new Error('Unable to fetch item');
+        const it = await res.json();
+        itemIdInput.value = it.item_id;
+        nameInput.value = it.name;
+        categoryInput.value = it.category || '';
+        qtyInput.value = it.quantity;
+        priceInput.value = it.price;
+        formTitle.textContent = 'Update Item';
+        saveBtn.style.display = 'none';
+        updateBtn.style.display = '';
+      } catch (err) {
+        showMessage('Edit failed: ' + err.message);
+      }
+    }
+
+    // Update item
+    async function updateItem() {
+      const id = itemIdInput.value;
+      if (!id) return showMessage('No item selected for update');
+      const name = nameInput.value.trim();
+      const category = categoryInput.value.trim();
+      const qty = Number(qtyInput.value);
+      const price = Number(priceInput.value);
+      if (!validateForm(name, qty, price)) return;
+
+      try {
+        const res = await fetch(`${API_BASE}/items/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, category, quantity: qty, price })
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(err || 'Failed to update item');
+        }
+        showMessage('Item updated');
+        resetForm();
+        fetchItems();
+      } catch (err) {
+        showMessage('Update failed: ' + err.message);
+      }
+    }
+
+    // Delete item
+    async function deleteItem(id) {
+      if (!confirm('Delete this item? This cannot be undone.')) return;
+      try {
+        const res = await fetch(`${API_BASE}/items/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        showMessage('Item deleted');
+        fetchItems();
+      } catch (err) {
+        showMessage('Delete failed: ' + err.message);
+      }
+    }
+
+    // Reset form to initial state
+    function resetForm() {
+      itemIdInput.value = '';
+      nameInput.value = '';
+      categoryInput.value = '';
+      qtyInput.value = '0';
+      priceInput.value = '0.00';
+      formTitle.textContent = 'Add New Item';
+      saveBtn.style.display = '';
+      updateBtn.style.display = 'none';
+    }
+
+    // Download CSV (basic)
+    function downloadCSV(items) {
+      if (!Array.isArray(items) || items.length === 0) return alert('No items to export.');
+      const header = ['Item ID','Name','Category','Quantity','Price'];
+      const rows = items.map(it => [it.item_id, it.name, it.category || '', it.quantity, it.price]);
+      const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'inventory_export.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Small utilities
+    function escapeHtml(s){ return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function formatMoney(v){ return Number(v).toFixed(2); }
+
+    // Wire up event listeners
+    saveBtn.addEventListener('click', addItem);
+    updateBtn.addEventListener('click', updateItem);
+    resetBtn.addEventListener('click', resetForm);
+    refreshBtn.addEventListener('click', () => fetchItems(searchInput.value.trim()));
+    searchBtn.addEventListener('click', () => fetchItems(searchInput.value.trim()));
+    clearSearchBtn.addEventListener('click', () => { searchInput.value=''; fetchItems(); });
+    downloadCsv.addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${API_BASE}/items`);
+        if (!res.ok) throw new Error('Failed to fetch items for export');
+        const items = await res.json();
+        downloadCSV(items);
+      } catch (err) {
+        alert('Export failed: ' + err.message);
+      }
+    });
+
+    // Initial load
+    fetchItems();
+
+    // Expose delete & edit to global scope so onClick works
+    window.deleteItem = deleteItem;
+    window.editItem = editItem;
+  </script>
+</body>
+</html>
+
